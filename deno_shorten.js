@@ -1,5 +1,5 @@
 import { shorten } from "./auto_golf.js"
-import { Parser, parserFromWasm } from "https://deno.land/x/deno_tree_sitter@0.2.8.4/main.js"
+import { Parser, parserFromWasm, xmlStylePreview } from "https://deno.land/x/deno_tree_sitter@0.2.8.4/main.js"
 import javascript from "https://github.com/jeff-hykin/common_tree_sitter_languages/raw/676ffa3b93768b8ac628fd5c61656f7dc41ba413/main/javascript.js"
 
 const parser = await parserFromWasm(javascript) // path or Uint8Array
@@ -1049,24 +1049,90 @@ let resultCode = await shorten({
             }
             return outputChunks.join("")
         },
-        // remove more complex whitespace
+        // try to remove whitespaces
         (code) => {
             let rootNode = parser.parse({string: code, withWhitespace: true }).rootNode
             let outputChunks = []
             let skipNode
+            let prev
             for (const [ parents, node, direction ] of rootNode.traverse()) {
                 if (parents.includes(skipNode)) {
+                    // prev = node
                     continue
                 }
 
                 if (node.type == "whitespace") {
-                    console.log(node)
+                    if (prev?.type == "new") {
+                        outputChunks.push(" ")
+                        prev = node
+                        continue
+                    }
+
+                    if (node.text.includes("\n")) {
+                        outputChunks.push("\n")
+                    }
+                    // prev = node
                     continue
                 }
                 
                 if (direction == "-") {
                     outputChunks.push(node.text)
                 }
+                prev = node
+            }
+            return outputChunks.join("")
+        },
+        // try to remove newlines
+        (code) => {
+            let rootNode = parser.parse({string: code, withWhitespace: true }).rootNode
+            let outputChunks = []
+            let skipNode
+            let prev
+            for (const [ parents, node, direction ] of rootNode.traverse()) {
+                if (parents.includes(skipNode)) {
+                    // prev = node
+                    continue
+                }
+
+                if (node.type == "whitespace" && prev?.type != "new") {
+                    if (node.text.includes("\n")) {
+                        continue
+                    }
+                    // prev = node
+                }
+                
+                if (direction == "-") {
+                    outputChunks.push(node.text)
+                }
+                prev = node
+            }
+            return outputChunks.join("")
+        },
+        // shorten arrow functions
+        (code) => {
+            let rootNode = parser.parse({string: code, withWhitespace: true }).rootNode
+            let outputChunks = []
+            let skipNode
+            let prev
+            for (const [ parents, node, direction ] of rootNode.traverse()) {
+                if (skipNode) {
+                    if (skipNode == parents.length) {
+                        skipNode = undefined
+                    }
+                    // prev = node 
+                    continue
+                }
+                let match
+                if (node.type == "arrow_function" && (match=node.text.match(/^\(\s*(\w+)\s*\)\s*=>/))) {
+                    outputChunks.push(node.text.replace(/^\(\s*(\w+)\s*\)\s*=>/, "$1=>"))
+                    skipNode = parents.length
+                    continue
+                }
+                
+                if (direction == "-") {
+                    outputChunks.push(node.text)
+                }
+                prev = node
             }
             return outputChunks.join("")
         },
