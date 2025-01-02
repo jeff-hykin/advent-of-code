@@ -23,17 +23,18 @@ const $$ = (...args)=>$(...args).noThrow()
  * })
  * ```
  */
-export async function shorten({ codePath, inputOutputStrings, transformations }) {
-    const code = await FileSystem.read(codePath)
+export async function shorten({ codePath, runCommandMaker=(path)=>[`deno`, "run", "-A", `${path}`], inputOutputStrings, transformations }) {
+    let code = await FileSystem.read(codePath)
     const [ folders, fileName, extension ] = FileSystem.pathPieces(codePath)
     const tempPath = await Deno.makeTempFile({
         prefix: fileName,
         suffix: extension,
     })
-    const checkSolution = (solution) => {
+    await FileSystem.addPermissions({ path: tempPath, permissions: { owner: { canExecute: true }, group: { canExecute: true }, others: { canExecute: true } } })
+    const checkSolution = async (solution) => {
         await FileSystem.write({path: tempPath, data: solution})
         for (let [input,correctOutput] of inputOutputStrings) {
-            const givenOutput = await $$`${codePath}`.stdinText(input).text()
+            const givenOutput = await $$`${runCommandMaker(tempPath)}`.stdinText(input).text()
             if (givenOutput != correctOutput) {
                 return false
             }
@@ -47,7 +48,7 @@ export async function shorten({ codePath, inputOutputStrings, transformations })
         for (const transform of transformations) {
             while (true) {
                 let newCode = transform(code)
-                if (newCode) {
+                if (newCode && (newCode.length < code.length)) {
                     if (await checkSolution(newCode)) {
                         code = newCode
                         aTransformationWasFound = true
