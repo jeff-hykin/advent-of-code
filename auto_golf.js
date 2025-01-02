@@ -34,7 +34,7 @@ export async function shorten({ codePath, runCommandMaker=(path)=>[`deno`, "run"
     const checkSolution = async (solution) => {
         await FileSystem.write({path: tempPath, data: solution})
         for (let [input,correctOutput] of inputOutputStrings) {
-            const givenOutput = await $$`${runCommandMaker(tempPath)}`.stdinText(input).text()
+            const givenOutput = await $$`${runCommandMaker(tempPath)}`.stdinText(input).stderr("null").text()
             if (givenOutput != correctOutput) {
                 return false
             }

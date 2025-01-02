@@ -1,4 +1,8 @@
 import { shorten } from "./auto_golf.js"
+import { Parser, parserFromWasm } from "https://deno.land/x/deno_tree_sitter@0.2.8.4/main.js"
+import javascript from "https://github.com/jeff-hykin/common_tree_sitter_languages/raw/676ffa3b93768b8ac628fd5c61656f7dc41ba413/main/javascript.js"
+
+const parser = await parserFromWasm(javascript) // path or Uint8Array
 
 let resultCode = await shorten({
     codePath: "./solutions/2024/deno/1.golf.js",
@@ -1019,11 +1023,53 @@ let resultCode = await shorten({
     transformations: [
         // replace tab escapes with tab literals
         (code) => code.replace(/\\t/g, "\t"),
+        // replace some newline escapes with newline literals
         (code) => code.replace(/(\`|"|')\\n(\1)/g, "\`\n\`"),
         (code) => code.replace(/\s{2,}/g, "\n"),
         (code) => code.replace(/\s{2,}/, "\n"),
         (code) => code.replace(/\.split\(\/(.+)\/g\)/g, "split(/$1/)"),
         (code) => code.replace(/\.split\(("|')(.+)(\1)\)/g, "split\`$2\`"),
+        // remove comments
+        (code) => {
+            let rootNode = parser.parse({string: code, withWhitespace: true }).rootNode
+            let outputChunks = []
+            let skipNode
+            for (const [ parents, node, direction ] of rootNode.traverse()) {
+                if (parents.includes(skipNode)) {
+                    continue
+                }
+
+                if (node.type == "comment") {
+                    continue
+                }
+                
+                if (direction == "-") {
+                    outputChunks.push(node.text)
+                }
+            }
+            return outputChunks.join("")
+        },
+        // remove more complex whitespace
+        (code) => {
+            let rootNode = parser.parse({string: code, withWhitespace: true }).rootNode
+            let outputChunks = []
+            let skipNode
+            for (const [ parents, node, direction ] of rootNode.traverse()) {
+                if (parents.includes(skipNode)) {
+                    continue
+                }
+
+                if (node.type == "whitespace") {
+                    console.log(node)
+                    continue
+                }
+                
+                if (direction == "-") {
+                    outputChunks.push(node.text)
+                }
+            }
+            return outputChunks.join("")
+        },
     ],
 })
 console.debug(`resultCode is:`,resultCode)
